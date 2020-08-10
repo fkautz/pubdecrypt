@@ -288,3 +288,87 @@ func leftPad(input []byte, size int) (out []byte) {
 	copy(out[len(out)-n:], input)
 	return
 }
+
+// EncryptPKCS1v15 encrypts the given message with RSA and the padding
+// scheme from PKCS#1 v1.5.  The message must be no longer than the
+// length of the public modulus minus 11 bytes.
+//
+// The rand parameter is used as a source of entropy to ensure that
+// encrypting the same message twice doesn't result in the same
+// ciphertext.
+//
+// WARNING: use of this function to encrypt plaintexts other than
+// session keys is dangerous. Use RSA OAEP in new protocols.
+//
+// Originally from https://github.com/golang/go/blob/release-branch.go1.14/src/crypto/rsa/pkcs1v15.go#L29-L66
+func EncryptPKCS1v15(rand io.Reader, pub *rsa.PublicKey, msg []byte) ([]byte, error) {
+	maybeReadByte(rand)
+
+	if err := checkPub(pub); err != nil {
+		return nil, err
+	}
+	k := pub.Size()
+	if len(msg) > k-11 {
+		return nil, rsa.ErrMessageTooLong
+	}
+
+	// EM = 0x00 || 0x02 || PS || 0x00 || M
+	em := make([]byte, k)
+	em[1] = 2
+	ps, mm := em[2:len(em)-len(msg)-1], em[len(em)-len(msg):]
+	err := nonZeroRandomBytes(ps, rand)
+	if err != nil {
+		return nil, err
+	}
+	em[len(em)-len(msg)-1] = 0
+	copy(mm, msg)
+
+	m := new(big.Int).SetBytes(em)
+	c := encrypt(new(big.Int), pub, m)
+
+	copyWithLeftPad(em, c.Bytes())
+	return em, nil
+}
+
+// nonZeroRandomBytes fills the given slice with non-zero random octets.
+//
+// Originally from https://github.com/golang/go/blob/release-branch.go1.14/src/crypto/rsa/pkcs1v15.go#L29-L66
+func nonZeroRandomBytes(s []byte, rand io.Reader) (err error) {
+	_, err = io.ReadFull(rand, s)
+	if err != nil {
+		return
+	}
+
+	for i := 0; i < len(s); i++ {
+		for s[i] == 0 {
+			_, err = io.ReadFull(rand, s[i:i+1])
+			if err != nil {
+				return
+			}
+			// In tests, the PRNG may return all zeros so we do
+			// this to break the loop.
+			s[i] ^= 0x42
+		}
+	}
+
+	return
+}
+
+// Originally from https://github.com/golang/go/blob/release-branch.go1.14/src/crypto/rsa/rsa.go#L353-L357
+func encrypt(c *big.Int, pub *rsa.PublicKey, m *big.Int) *big.Int {
+	e := big.NewInt(int64(pub.E))
+	c.Exp(m, e, pub.N)
+	return c
+}
+
+// copyWithLeftPad copies src to the end of dest, padding with zero bytes as
+// needed.
+//
+// Originally from https://github.com/golang/go/blob/release-branch.go1.14/src/crypto/rsa/pkcs1v15.go#L320-L328
+func copyWithLeftPad(dest, src []byte) {
+	numPaddingBytes := len(dest) - len(src)
+	for i := 0; i < numPaddingBytes; i++ {
+		dest[i] = 0
+	}
+	copy(dest[numPaddingBytes:], src)
+}
