@@ -52,9 +52,9 @@ func TestLocalPKCS15Encrypt(t *testing.T) {
 
 	secretMessage := "hello world"
 
-	encryptedMessage, err := EncryptPKCS1v15(rand.Reader, &privateKey.PublicKey, []byte(secretMessage))
+	encryptedMessage, err := EncryptPKCS1v15(rand.Reader, privateKey, []byte(secretMessage))
 	assert.NoError(t, err)
-	decryptedMessage, _ := DecryptPKCS1v15(nil, privateKey, encryptedMessage)
+	decryptedMessage, _ := DecryptPKCS1v15(nil, &privateKey.PublicKey, encryptedMessage)
 	assert.NoError(t, err)
 
 	assert.Equal(t, secretMessage, string(decryptedMessage))

@@ -72,11 +72,11 @@ func RsaEncrypt(m, e, n *big.Int) *big.Int {
 // DecryptPKCS1v15SessionKey for a way of solving this problem.
 //
 // Originally from https://golang.org/src/crypto/rsa/pkcs1v15.go?s=2396:2485#L66
-func DecryptPKCS1v15(rand io.Reader, priv *rsa.PrivateKey, ciphertext []byte) ([]byte, error) {
-	if err := checkPub(&priv.PublicKey); err != nil {
+func DecryptPKCS1v15(rand io.Reader, pub *rsa.PublicKey, ciphertext []byte) ([]byte, error) {
+	if err := checkPub(pub); err != nil {
 		return nil, err
 	}
-	valid, out, index, err := decryptPKCS1v15(rand, priv, ciphertext)
+	valid, out, index, err := decryptPKCS1v15(rand, pub, ciphertext)
 	if err != nil {
 		return nil, err
 	}
@@ -121,18 +121,16 @@ func checkPub(pub *rsa.PublicKey) error {
 // valid then index contains the index of the original message in em.
 //
 // Originally from https://github.com/golang/go/blob/release-branch.go1.14/src/crypto/rsa/pkcs1v15.go#L134-L176
-func decryptPKCS1v15(rand io.Reader, priv *rsa.PrivateKey, ciphertext []byte) (valid int, em []byte, index int, err error) {
-	k := priv.Size()
+func decryptPKCS1v15(rand io.Reader, pub *rsa.PublicKey, ciphertext []byte) (valid int, em []byte, index int, err error) {
+	k := pub.Size()
 	if k < 11 {
 		err = rsa.ErrDecryption
 		return
 	}
 
 	c := new(big.Int).SetBytes(ciphertext)
-	m, err := decrypt(rand, priv, c)
-	if err != nil {
-		return
-	}
+	e := big.NewInt(int64(pub.E))
+	m := RsaEncrypt(c, e, pub.N)
 
 	em = leftPad(m.Bytes(), k)
 	firstByteIsZero := subtle.ConstantTimeByteEq(em[0], 0)
@@ -301,13 +299,13 @@ func leftPad(input []byte, size int) (out []byte) {
 // session keys is dangerous. Use RSA OAEP in new protocols.
 //
 // Originally from https://github.com/golang/go/blob/release-branch.go1.14/src/crypto/rsa/pkcs1v15.go#L29-L66
-func EncryptPKCS1v15(rand io.Reader, pub *rsa.PublicKey, msg []byte) ([]byte, error) {
+func EncryptPKCS1v15(rand io.Reader, priv *rsa.PrivateKey, msg []byte) ([]byte, error) {
 	maybeReadByte(rand)
 
-	if err := checkPub(pub); err != nil {
+	if err := checkPub(&priv.PublicKey); err != nil {
 		return nil, err
 	}
-	k := pub.Size()
+	k := priv.PublicKey.Size()
 	if len(msg) > k-11 {
 		return nil, rsa.ErrMessageTooLong
 	}
@@ -324,7 +322,7 @@ func EncryptPKCS1v15(rand io.Reader, pub *rsa.PublicKey, msg []byte) ([]byte, er
 	copy(mm, msg)
 
 	m := new(big.Int).SetBytes(em)
-	c := encrypt(new(big.Int), pub, m)
+	c := RsaEncrypt(m, priv.D, priv.N)
 
 	copyWithLeftPad(em, c.Bytes())
 	return em, nil
