@@ -46,7 +46,7 @@ func TestReversePass(t *testing.T) {
 	assert.Equal(t, secretMessage, string(decryptedMessage.Bytes()))
 }
 
-func TestLocalPKCS15Encrypt(t *testing.T) {
+func TestReversePKCS15Encrypt(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	assert.NoError(t, err)
 
